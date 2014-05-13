@@ -11,26 +11,58 @@ var Click = require('./app/models/click');
 
 var app = express();
 
+var checkAuth = function (req, res, next) {
+  if (req.session.user){
+    next();
+  }else{
+    res.redirect('/login');
+  }
+};
+
 app.configure(function() {
   app.set('views', __dirname + '/views');
   app.set('view engine', 'ejs');
   app.use(partials());
-  app.use(express.bodyParser())
+  // include the following to be able to generate cookies
+  app.use(express.cookieParser('secrete'));
+  app.use(express.session());
+  app.use(express.bodyParser());
   app.use(express.static(__dirname + '/public'));
 });
 
-app.get('/', function(req, res) {
+app.get('/', checkAuth, function(req, res) {
   res.render('index');
 });
 
-app.get('/create', function(req, res) {
+app.get('/create', checkAuth, function(req, res) {
   res.render('index');
 });
 
-app.get('/links', function(req, res) {
-  Links.reset().fetch().then(function(links) {
+// app.post('/create', checkAuth, function(req, res){
+//   var username = req.session.user;
+//   var url = req.body.url;
+
+
+//   console.log(req.body.url);
+//   var link = new Link({url: url});
+//   link.save();
+
+//   Links.add(link);
+
+//   // new User({username: username})
+//   //   .fetch()
+//   //   .then(function(model){
+//   //     var link = new Link({url: url, user_id: model.get('id')});
+//   //     link.save();
+
+//   //     Links.add(link);
+//   //   });
+// });
+
+app.get('/links', checkAuth, function(req, res) {
+  Links.reset().fetch().then(function (links) {
     res.send(200, links.models);
-  })
+  });
 });
 
 app.post('/links', function(req, res) {
@@ -69,8 +101,66 @@ app.post('/links', function(req, res) {
 /************************************************************/
 // Write your authentication routes here
 /************************************************************/
+app.get('/signup', function(req, res) {
+  //console.log('get request');
+  res.render('signup');
+});
 
+app.post('/signup', function(req, res){
 
+  var username = req.body.username;
+  var password = req.body.password;
+  //var salt = "1234";
+
+  new User({username: username}).fetch().then(function(found){
+    if(found){
+      res.redirect('/login');
+    } else {
+      var user = new User({
+        username: username,
+        password: password
+      });
+      user.save().then(function(user){
+        Users.add(user);
+        res.redirect('/login');
+      });
+    }
+  });
+});
+
+app.get('/login', function(req, res) {
+  //console.log('get request');
+  res.render('login');
+});
+
+app.post('/login', function(req, res){
+  var username = req.body.username;
+  var password = req.body.password;
+
+  var qb = Users.query;
+
+  Users.query(function(qb) {
+    qb.where('username', '=', username)
+      .andWhere('password', '=', password);
+  }).fetchOne()
+  .then(function(model) {
+    req.session.regenerate(function(){
+      req.session.user = username;
+      res.redirect('/links');
+    });
+  })
+  .catch(function (err) {
+    console.log('login: ', err);
+    res.render('login');
+  });
+
+});
+
+app.get('/logout', function(req, res) {
+  req.session.destroy(function() {
+    res.redirect('/login');
+  });
+});
 
 /************************************************************/
 // Handle the wildcard route last - if all other routes fail
